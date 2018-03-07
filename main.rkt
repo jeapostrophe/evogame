@@ -148,16 +148,13 @@
                 (build-list population-size (λ (_) (spontaneous-generation)))])
               ([gen (in-range how-many-generations)])
       (eprintf "Generation ~a\n" gen)
-      ;; XXX change to partial sort
-      (define sorted-population (fitness population))
-      (define-values (fit unfit) (split-at sorted-population retain-count))
-      ;; XXX fuse shuffle-take
+      (eprintf "\tFitness...\n")
+      (define-values (fit unfit) (time (fitness retain-count population)))
       (define surviving-unfit (take (shuffle unfit) survive-count))
-      ;; XXX fuse shuffle split-at
-      (define surviving (shuffle (append fit surviving-unfit)))
-      (define-values (will-mutate wont-mutate) (split-at surviving mutate-count))
+      (define-values (will-mutate wont-mutate)
+        (split-at surviving-unfit mutate-count))
       (define mutated (map mutate will-mutate))
-      (define parents (append mutated wont-mutate))
+      (define parents (append fit mutated wont-mutate))
       (define children
         (for/list ([i (in-range number-of-children)])
           (define male-idx (random parent-count))
@@ -166,45 +163,53 @@
           (define female (list-ref parents female-idx))
           (breed male female)))
       (append parents children)))
-  ;; XXX change to partial sort
-  (first (fitness final-population)))
+  (define-values (best others) (fitness 1 final-population))
+  (first best))
 
-;; XXX doesn't seem like enough changes
 (define (mutate-ai-matrix! B)
-  (flvector-set! B (random (* 18 9)) (random-ai-matrix-cell))
+  (define prng (current-pseudo-random-generator))
+  (for ([i (in-range (random 10))])
+    (define i (random (* 18 9)))
+    (define old (flvector-ref B i))
+    (flvector-set! B i (fl* old (fl- (fl* 0.5 (flrandom prng)) 0.5))))
   B)
 
+(define (lerp x y %)
+  (fl+ x (fl* % (fl- y x))))
+
 (define (ai-matrix-breed B1 B2)
+  (define prng (current-pseudo-random-generator))
   (define B3 (make-flvector (* 18 9)))
   (for ([i (in-naturals)] [m (in-flvector B1)] [f (in-flvector B2)])
-    (flvector-set! B3 i (if (zero? (random 2)) m f)))
+    (flvector-set! B3 i (lerp m f (flrandom prng))))
   B3)
 
 (define (tic-tac-toe/score P1d P2d)
   (define P1 (tic-tac-toe-ai P1d))
   (define P2 (tic-tac-toe-ai P2d))
   (+ (match (tic-tac-toe P1 P2)
-       ['O 2]
-       ['Tie 1]
+       ['O 0]
+       ['Tie 10]
        ['X 0])
      (match (tic-tac-toe P2 P1)
        ['O 0]
-       ['Tie 1]
-       ['X 2])))
-(define ((tournament game) players)
-  (map car
-       (sort
-        (let loop ([previous-players '()]
-                   [players players])
-          (match players
-            ['() '()]
-            [(cons P1 future-players)
-             (define score
-               (+ (for/sum ([p (in-list previous-players)]) (game P1 p))
-                  (for/sum ([p (in-list future-players)]) (game P1 p))))
-             (cons (cons P1 score)
-                   (loop (cons P1 previous-players) future-players))]))
-        >= #:key cdr)))
+       ['Tie 10]
+       ['X 0])))
+(define ((tournament game) how-many players)
+  ;; XXX change to partial sort
+  (define players-with-scores
+    (let loop ([previous-players '()]
+               [players players])
+      (match players
+        ['() '()]
+        [(cons P1 future-players)
+         (define score
+           (+ (for/sum ([p (in-list previous-players)]) (game P1 p))
+              (for/sum ([p (in-list future-players)]) (game P1 p))))
+         (cons (cons P1 score)
+               (loop (cons P1 previous-players) future-players))])))
+  (define p*c-decreasing (sort players-with-scores >= #:key cdr))
+  (split-at (map car p*c-decreasing) how-many))
 
 (module+ test
   (define evolved-ai-matrix
