@@ -79,6 +79,8 @@
           [(? number? n) (cons who-am-i n)]
           [_ (loop)])))))
 
+;; http://www.ijcte.org/papers/799-T098.pdf
+
 (define (vecmat-mult! m p A B C)
   (unless (= (flvector-length A) m)
     (error 'vecmat-multiply "A is wrong size"))
@@ -91,7 +93,7 @@
                [b (in-flvector B (fx* j m))])
        (fl* a b)))))
 
-(define (tic-tac-toe-ai ai-matrix)
+(define (tic-tac-toe-matrix-ai ai-matrix)
   (define input-vec (make-flvector 18))
   (define output-vec (make-flvector 9))
   (λ (who-am-i)
@@ -185,16 +187,15 @@
   B3)
 
 (define (tic-tac-toe/score P1d P2d)
-  (define P1 (tic-tac-toe-ai P1d))
-  (define P2 (tic-tac-toe-ai P2d))
-  (+ (match (tic-tac-toe P1 P2)
-       ['O 0]
-       ['Tie 10]
-       ['X 0])
-     (match (tic-tac-toe P2 P1)
-       ['O 0]
-       ['Tie 10]
-       ['X 0])))
+  (define P1 (tic-tac-toe-matrix-ai P1d))
+  (define P2 (tic-tac-toe-matrix-ai P2d))
+  (match (cons (tic-tac-toe P1 P2) (tic-tac-toe P2 P1))
+    [(cons 'O 'X) 20]
+    [(cons 'Tie 'Tie) 10]
+    [(or (cons 'O 'O)
+         (cons 'X 'X))
+     5]
+    [_ 0]))
 (define ((tournament game) how-many players)
   ;; XXX change to partial sort
   (define players-with-scores
@@ -211,7 +212,7 @@
   (define p*c-decreasing (sort players-with-scores >= #:key cdr))
   (split-at (map car p*c-decreasing) how-many))
 
-(module+ test
+#;(module+ test
   (define evolved-ai-matrix
     (evolve 100 10
             0.2 0.05 0.01
@@ -220,5 +221,5 @@
             mutate-ai-matrix! ai-matrix-breed))
   evolved-ai-matrix
 
-  (tic-tac-toe (tic-tac-toe-ai evolved-ai-matrix)
+  (tic-tac-toe (tic-tac-toe-matrix-ai evolved-ai-matrix)
                tic-tac-toe-interactive))
