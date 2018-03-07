@@ -108,7 +108,7 @@
       (vecmat-mult! 18 9 input-vec ai-matrix output-vec)
 
       (for/fold ([spot #f]
-                 [spot-score 0]
+                 [spot-score -inf.0]
                  #:result (cons who-am-i spot))
                 ([i (in-naturals)]
                  [x (in-flvector output-vec)])
@@ -119,11 +119,14 @@
 
 (define equal-ai-matrix
   (make-flvector (* 18 9) (/ 1.0 18.0)))
+(define (random-ai-matrix-cell)
+  (define prng (current-pseudo-random-generator))
+  (fl- (fl* 2.0 (flrandom prng)) 1.0))
+
 (define (random-ai-matrix)
   (define AI (make-flvector (* 18 9) 0.0))
-  (define prng (current-pseudo-random-generator))
   (for ([i (in-naturals)] [x (in-flvector AI)])
-    (flvector-set! AI i (flrandom prng)))
+    (flvector-set! AI i (random-ai-matrix-cell)))
   AI)
 
 (define (random-but-not used total)
@@ -168,8 +171,7 @@
 
 ;; XXX doesn't seem like enough changes
 (define (mutate-ai-matrix! B)
-  (define prng (current-pseudo-random-generator))
-  (flvector-set! B (random (* 18 9)) (flrandom prng))
+  (flvector-set! B (random (* 18 9)) (random-ai-matrix-cell))
   B)
 
 (define (ai-matrix-breed B1 B2)
@@ -206,7 +208,7 @@
 
 (module+ test
   (define evolved-ai-matrix
-    (evolve 100 20
+    (evolve 100 10
             0.2 0.05 0.01
             random-ai-matrix
             (tournament tic-tac-toe/score)
