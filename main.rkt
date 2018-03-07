@@ -1,5 +1,7 @@
 #lang racket/base
 (require racket/flonum
+         racket/fixnum
+         racket/list
          racket/match)
 
 (define-syntax-rule (while test . body)
@@ -90,8 +92,8 @@
        (fl* a b)))))
 
 (define (tic-tac-toe-ai ai-matrix)
-  (define input-vec (make-flvector 16))
-  (define output-vec (make-flvector 8))
+  (define input-vec (make-flvector 18))
+  (define output-vec (make-flvector 9))
   (λ (who-am-i)
     (λ (board)
       ;; 0-8 are "spot is open"
@@ -103,20 +105,113 @@
             [x (in-vector board)])
         (flvector-set! input-vec (+ 9 i) (if (eq? x who-am-i) 1.0 0.0)))
 
-      ;; A     =  1 x 16
-      ;;     B = 16 x 8
-      ;; A * B =  1 x 8
-      (vecmat-mult! 16 8 input-vec ai-matrix output-vec)
+      (vecmat-mult! 18 9 input-vec ai-matrix output-vec)
 
       (for/fold ([spot #f]
                  [spot-score 0]
-                 #:return (cons who-am-i spot))
+                 #:result (cons who-am-i spot))
                 ([i (in-naturals)]
                  [x (in-flvector output-vec)])
-        (if (< spot-score x)
+        (if (and (not (vector-ref board i))
+                 (< spot-score x))
           (values i x)
           (values spot spot-score))))))
 
+(define equal-ai-matrix
+  (make-flvector (* 18 9) (/ 1.0 18.0)))
+(define (random-ai-matrix)
+  (define AI (make-flvector (* 18 9) 0.0))
+  (define prng (current-pseudo-random-generator))
+  (for ([i (in-naturals)] [x (in-flvector AI)])
+    (flvector-set! AI i (flrandom prng)))
+  AI)
+
+(define (random-but-not used total)
+  (define next (random total))
+  (if (= next used)
+    (random-but-not used total)
+    next))
+(define (evolve population-size how-many-generations
+                retain% survive% mutate%
+                spontaneous-generation
+                fitness mutate breed)
+  (define retain-count (inexact->exact (round (* population-size retain%))))
+  (define mutate-count (inexact->exact (round (* population-size mutate%))))
+  (define survive-count (inexact->exact (round (* population-size survive%))))
+  (define parent-count (+ retain-count survive-count))
+  (define number-of-children (- population-size parent-count))
+  (define final-population
+    (for/fold ([population
+                (build-list population-size (λ (_) (spontaneous-generation)))])
+              ([gen (in-range how-many-generations)])
+      (eprintf "Generation ~a\n" gen)
+      ;; XXX change to partial sort
+      (define sorted-population (fitness population))
+      (define-values (fit unfit) (split-at sorted-population retain-count))
+      ;; XXX fuse shuffle-take
+      (define surviving-unfit (take (shuffle unfit) survive-count))
+      ;; XXX fuse shuffle split-at
+      (define surviving (shuffle (append fit surviving-unfit)))
+      (define-values (will-mutate wont-mutate) (split-at surviving mutate-count))
+      (define mutated (map mutate will-mutate))
+      (define parents (append mutated wont-mutate))
+      (define children
+        (for/list ([i (in-range number-of-children)])
+          (define male-idx (random parent-count))
+          (define female-idx (random-but-not male-idx parent-count))
+          (define male (list-ref parents male-idx))
+          (define female (list-ref parents female-idx))
+          (breed male female)))
+      (append parents children)))
+  ;; XXX change to partial sort
+  (first (fitness final-population)))
+
+;; XXX doesn't seem like enough changes
+(define (mutate-ai-matrix! B)
+  (define prng (current-pseudo-random-generator))
+  (flvector-set! B (random (* 18 9)) (flrandom prng))
+  B)
+
+(define (ai-matrix-breed B1 B2)
+  (define B3 (make-flvector (* 18 9)))
+  (for ([i (in-naturals)] [m (in-flvector B1)] [f (in-flvector B2)])
+    (flvector-set! B3 i (if (zero? (random 2)) m f)))
+  B3)
+
+(define (tic-tac-toe/score P1d P2d)
+  (define P1 (tic-tac-toe-ai P1d))
+  (define P2 (tic-tac-toe-ai P2d))
+  (+ (match (tic-tac-toe P1 P2)
+       ['O 2]
+       ['Tie 1]
+       ['X 0])
+     (match (tic-tac-toe P2 P1)
+       ['O 0]
+       ['Tie 1]
+       ['X 2])))
+(define ((tournament game) players)
+  (map car
+       (sort
+        (let loop ([previous-players '()]
+                   [players players])
+          (match players
+            ['() '()]
+            [(cons P1 future-players)
+             (define score
+               (+ (for/sum ([p (in-list previous-players)]) (game P1 p))
+                  (for/sum ([p (in-list future-players)]) (game P1 p))))
+             (cons (cons P1 score)
+                   (loop (cons P1 previous-players) future-players))]))
+        >= #:key cdr)))
+
 (module+ test
-  (tic-tac-toe tic-tac-toe-interactive
+  (define evolved-ai-matrix
+    (evolve 100 20
+            0.2 0.05 0.01
+            random-ai-matrix
+            (tournament tic-tac-toe/score)
+            mutate-ai-matrix! ai-matrix-breed))
+  evolved-ai-matrix
+
+  (tic-tac-toe (tic-tac-toe-ai evolved-ai-matrix)
                tic-tac-toe-interactive))
