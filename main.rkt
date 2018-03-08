@@ -200,7 +200,7 @@
   (unless (= (flvector-length A) m)
     (error 'vecmat-multiply "A is wrong size"))
   (unless (= (flvector-length C) p)
-    (error 'vecmat-multiply "A is wrong size"))
+    (error 'vecmat-multiply "C is wrong size"))
   (for ([j (in-range p)])
     (flvector-set!
      C j
